@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, MessageSquareHeart, Star, Send, CheckCircle2 } from 'lucide-react';
 import { useToast } from '../hooks/useToast.js';
+import { apiService } from '../services/apiService.js';
 
 export function FeedbackModal({ onClose }) {
   const [rating, setRating] = useState(5);
@@ -11,6 +12,7 @@ export function FeedbackModal({ onClose }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    apiService.submitFeedback({ rating, comment, email });
     setSubmitted(true);
     addToast('Thank you for your valuable feedback!', 'success');
     setTimeout(() => {

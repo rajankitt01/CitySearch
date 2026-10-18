@@ -73,7 +73,7 @@ export function Home({
               key={cat.id}
               onClick={() => {
                 // If a city is already selected or default to Pune
-                const city = searchState.selectedCity || searchState.popularCities[6]; // Pune
+                const city = searchState.selectedCity || searchState.popularCities.find(c => c.name === 'Pune') || searchState.popularCities[0];
                 onSelectCity(city);
                 if (onSelectCategoryDirectly) {
                   onSelectCategoryDirectly(cat.id);
@@ -150,7 +150,7 @@ export function Home({
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <EmergencyServicesSection 
           onSelectCategory={(catId) => {
-            const city = searchState.selectedCity || searchState.popularCities[6];
+            const city = searchState.selectedCity || searchState.popularCities.find(c => c.name === 'Pune') || searchState.popularCities[0];
             onSelectCity(city);
             if (onSelectCategoryDirectly) {
               onSelectCategoryDirectly(catId);

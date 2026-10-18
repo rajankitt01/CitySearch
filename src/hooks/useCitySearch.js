@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { searchLocation, reverseGeocode, POPULAR_CITIES } from '../services/geocodingService.js';
+import { searchLocation, reverseGeocode, matchLocalCities, POPULAR_CITIES } from '../services/geocodingService.js';
 import { storage } from '../utils/storage.js';
 
 export function useCitySearch(initialCity = null) {
@@ -12,25 +12,19 @@ export function useCitySearch(initialCity = null) {
   const [isLocating, setIsLocating] = useState(false);
 
   const debounceTimerRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
-  const updateQuery = useCallback((newQuery) => {
-    setQuery(newQuery);
-    if (!newQuery || newQuery.trim().length < 2) {
-      setSuggestions([]);
-      setIsSearching(false);
-    } else {
-      setIsSearching(true);
-      setSearchError(null);
-    }
-  }, []);
-
-  // Update recent searches
   const handleSelectCity = useCallback((cityObj) => {
     if (!cityObj || !cityObj.lat || !cityObj.lon) return;
+
+    // Cancel any in-flight searches
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    if (abortControllerRef.current) abortControllerRef.current.abort();
 
     setSelectedCity(cityObj);
     setQuery(cityObj.name);
     setSuggestions([]);
+    setIsSearching(false);
     setSearchError(null);
 
     // Save to storage and update local state
@@ -38,7 +32,25 @@ export function useCitySearch(initialCity = null) {
     setRecentSearches(storage.getRecentSearches());
   }, []);
 
-  // Debounced search for suggestions as user types
+  const updateQuery = useCallback((newQuery) => {
+    setQuery(newQuery);
+    if (!newQuery || newQuery.trim().length < 2) {
+      setSuggestions([]);
+      setIsSearching(false);
+      setSearchError(null);
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+      return;
+    }
+
+    // Instant zero-latency local suggestions check
+    const localMatches = matchLocalCities(newQuery);
+    if (localMatches.length > 0) {
+      setSuggestions(localMatches.slice(0, 8));
+    }
+    setSearchError(null);
+  }, []);
+
+  // Debounced search for remote suggestions / refining as user types
   useEffect(() => {
     if (!query || query.trim().length < 2) {
       return;
@@ -54,16 +66,29 @@ export function useCitySearch(initialCity = null) {
     }
 
     debounceTimerRef.current = setTimeout(async () => {
-      try {
-        const results = await searchLocation(query);
-        setSuggestions(results);
-      } catch (err) {
-        setSearchError(err.message || 'Error finding location suggestions');
-        setSuggestions([]);
-      } finally {
-        setIsSearching(false);
+      // Abort previous in-flight fetch
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
-    }, 350); // 350ms debounce
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      setIsSearching(true);
+      try {
+        const results = await searchLocation(query, controller.signal);
+        if (!controller.signal.aborted) {
+          setSuggestions(results);
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setSearchError(err.message || 'Error finding location suggestions');
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsSearching(false);
+        }
+      }
+    }, 180); // Ultra-responsive 180ms debounce
 
     return () => {
       if (debounceTimerRef.current) {
@@ -72,10 +97,24 @@ export function useCitySearch(initialCity = null) {
     };
   }, [query, selectedCity]);
 
-  // Execute explicit search on form submit / Enter key
+  // Execute search immediately on form submit / Enter key
   const executeSearch = useCallback(async (searchQuery = query) => {
-    if (!searchQuery || searchQuery.trim().length < 2) {
+    const q = (searchQuery || '').trim();
+    if (q.length < 2) {
       setSearchError('Please enter a city or town name to search.');
+      return;
+    }
+
+    // If suggestions are already available, immediately select the top suggestion!
+    if (suggestions.length > 0) {
+      handleSelectCity(suggestions[0]);
+      return;
+    }
+
+    // Check fast local matching index immediately
+    const localMatches = matchLocalCities(q);
+    if (localMatches.length > 0) {
+      handleSelectCity(localMatches[0]);
       return;
     }
 
@@ -83,11 +122,11 @@ export function useCitySearch(initialCity = null) {
     setSearchError(null);
 
     try {
-      const results = await searchLocation(searchQuery);
+      const results = await searchLocation(q);
       if (results && results.length > 0) {
         handleSelectCity(results[0]);
       } else {
-        setSearchError(`No matching cities found for "${searchQuery}". Please check the spelling.`);
+        setSearchError(`No matching cities found for "${q}". Please check the spelling.`);
       }
     } catch (err) {
       setSearchError(err.message || 'Unable to find that city. Please try again.');
@@ -95,7 +134,7 @@ export function useCitySearch(initialCity = null) {
       setIsSearching(false);
       setSuggestions([]);
     }
-  }, [query, handleSelectCity]);
+  }, [query, suggestions, handleSelectCity]);
 
   // Explicit browser geolocation trigger with permission
   const locateUser = useCallback(() => {
@@ -127,7 +166,7 @@ export function useCitySearch(initialCity = null) {
           setSearchError('Unable to retrieve your location. Please type a city name.');
         }
       },
-      { timeout: 10000, enableHighAccuracy: false }
+      { timeout: 8000, enableHighAccuracy: false }
     );
   }, [handleSelectCity]);
 

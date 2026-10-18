@@ -15,6 +15,9 @@ dist-ssr
 .env.*
 !.env.example
 .vercel
+server/data/*.sqlite
+*.sqlite-wal
+*.sqlite-shm
 
 # Editor directories and files
 .vscode/*

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, AlertTriangle, Send, CheckCircle2 } from 'lucide-react';
 import { useToast } from '../hooks/useToast.js';
+import { apiService } from '../services/apiService.js';
 
 export function ReportPlaceModal({ place, onClose }) {
   const [issueType, setIssueType] = useState('wrong_location');
@@ -16,15 +17,22 @@ export function ReportPlaceModal({ place, onClose }) {
     e.preventDefault();
     setIsSubmitting(true);
 
-    // Record report locally
+    apiService.submitReport({
+      placeId: place.id,
+      placeName: place.name,
+      issueType,
+      details,
+      email
+    });
+
     setTimeout(() => {
       setIsSubmitting(false);
       setSubmitted(true);
-      addToast('Thank you! Your report has been recorded for OpenStreetMap review.', 'success');
+      addToast('Thank you! Your report has been recorded in the database.', 'success');
       setTimeout(() => {
         onClose();
       }, 1800);
-    }, 600);
+    }, 400);
   };
 
   return (

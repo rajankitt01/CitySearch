@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { getPlacesByCategory, getCityCategoryOverview } from '../services/placesService.js';
 import { PLACE_CATEGORIES } from '../utils/placeCategories.js';
+import { storage } from '../utils/storage.js';
 
 export function usePlaces({ city, initialCategory = 'healthcare', initialRadius = 5 }) {
   const [activeCategory, setActiveCategory] = useState(initialCategory);
@@ -8,6 +9,7 @@ export function usePlaces({ city, initialCategory = 'healthcare', initialRadius 
   const [places, setPlaces] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Filters & Sorting within results
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,54 +24,49 @@ export function usePlaces({ city, initialCategory = 'healthcare', initialRadius 
   const [selectedPlaceId, setSelectedPlaceId] = useState(null);
 
   // Category counts overview
-  const [categoryCounts, setCategoryCounts] = useState({});
-  const [isOverviewLoading, setIsOverviewLoading] = useState(false);
-
-  // Fetch places whenever city, activeCategory, or radiusKm changes
-  const fetchPlaces = useCallback(async () => {
-    if (!city || !city.lat || !city.lon) {
-      setPlaces([]);
-      return;
+  const [categoryCounts, setCategoryCounts] = useState(() => {
+    if (city?.lat && city?.lon) {
+      return getCityCategoryOverview({ lat: city.lat, lon: city.lon, radiusKm: initialRadius });
     }
+    return {};
+  });
 
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const results = await getPlacesByCategory({
-        categoryId: activeCategory,
-        lat: city.lat,
-        lon: city.lon,
-        radiusKm,
-        cityName: city.name
-      });
-      setPlaces(results);
-      setVisibleCount(12); // reset pagination
-      // Update count for active category
-      setCategoryCounts(prev => ({
-        ...prev,
-        [activeCategory]: results.length
-      }));
-    } catch (err) {
-      console.error('Failed to load places:', err);
-      setError(err.message || 'Failed to retrieve places for this category.');
-      setPlaces([]);
-    } finally {
-      setIsLoading(false);
+  // Adjust state during render when city changes (React recommended pattern)
+  const [prevCityName, setPrevCityName] = useState(city?.name);
+  if (city?.name !== prevCityName) {
+    setPrevCityName(city?.name);
+    setSelectedPlaceId(null);
+    setSearchQuery('');
+    setSelectedSubCategory('all');
+    setOnlyOpenNow(false);
+    setVisibleCount(12);
+    if (city?.lat && city?.lon) {
+      setCategoryCounts(getCityCategoryOverview({ lat: city.lat, lon: city.lon, radiusKm }));
+    } else {
+      setCategoryCounts({});
     }
-  }, [city, activeCategory, radiusKm]);
+  }
 
+  const abortControllerRef = useRef(null);
+
+  // Main reactive fetch effect
   useEffect(() => {
-    let active = true;
     if (!city || !city.lat || !city.lon) {
       Promise.resolve().then(() => {
-        if (active) setPlaces([]);
+        setPlaces([]);
+        setIsLoading(false);
       });
       return;
     }
 
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     Promise.resolve().then(() => {
-      if (active) {
+      if (!controller.signal.aborted) {
         setIsLoading(true);
         setError(null);
       }
@@ -80,21 +77,24 @@ export function usePlaces({ city, initialCategory = 'healthcare', initialRadius 
       lat: city.lat,
       lon: city.lon,
       radiusKm,
-      cityName: city.name
+      cityName: city.name,
+      signal: controller.signal
     })
       .then((results) => {
-        if (active) {
+        if (!controller.signal.aborted) {
           setPlaces(results);
           setVisibleCount(12);
-          setCategoryCounts(prev => ({
-            ...prev,
-            [activeCategory]: results.length
-          }));
+          setCategoryCounts(prev => {
+            const updated = { ...prev, [activeCategory]: results.length };
+            const overviewCacheKey = `city_overview_${city.lat.toFixed(3)}_${city.lon.toFixed(3)}_${radiusKm}`;
+            storage.setCache(overviewCacheKey, updated, 20 * 60 * 1000);
+            return updated;
+          });
           setIsLoading(false);
         }
       })
       .catch((err) => {
-        if (active) {
+        if (!controller.signal.aborted && err.name !== 'AbortError') {
           console.error('Failed to load places:', err);
           setError(err.message || 'Failed to retrieve places for this category.');
           setPlaces([]);
@@ -103,39 +103,9 @@ export function usePlaces({ city, initialCategory = 'healthcare', initialRadius 
       });
 
     return () => {
-      active = false;
+      controller.abort();
     };
-  }, [city, activeCategory, radiusKm]);
-
-  // Load category overview counts in background when city or radius changes
-  useEffect(() => {
-    if (!city || !city.lat || !city.lon) return;
-
-    let isSubscribed = true;
-    Promise.resolve().then(() => {
-      if (isSubscribed) setIsOverviewLoading(true);
-    });
-
-    getCityCategoryOverview({
-      lat: city.lat,
-      lon: city.lon,
-      radiusKm,
-      cityName: city.name
-    })
-      .then(counts => {
-        if (isSubscribed) {
-          setCategoryCounts(counts);
-          setIsOverviewLoading(false);
-        }
-      })
-      .catch(() => {
-        if (isSubscribed) setIsOverviewLoading(false);
-      });
-
-    return () => {
-      isSubscribed = false;
-    };
-  }, [city, radiusKm]);
+  }, [city, activeCategory, radiusKm, retryCount]);
 
   // Available subcategories in current results
   const availableSubCategories = useMemo(() => {
@@ -165,14 +135,12 @@ export function usePlaces({ city, initialCategory = 'healthcare', initialRadius 
       result = result.filter(p => p.subCategory === selectedSubCategory);
     }
 
-    // Open now filter (only filter when opening hours data is present)
+    // Open now filter
     if (onlyOpenNow) {
       result = result.filter(p => {
         if (!p.openingHours) return false;
         const h = p.openingHours.toLowerCase();
-        if (h.includes('24/7')) return true;
-        // Simple heuristic for open now
-        return true;
+        return h.includes('24/7') || !h.includes('off');
       });
     }
 
@@ -226,7 +194,7 @@ export function usePlaces({ city, initialCategory = 'healthcare', initialRadius 
     loadMore,
     isLoading,
     error,
-    retry: fetchPlaces,
+    retry: () => setRetryCount(c => c + 1),
     // Filters & Sorting
     searchQuery,
     setSearchQuery,
@@ -244,7 +212,7 @@ export function usePlaces({ city, initialCategory = 'healthcare', initialRadius 
     selectedPlace,
     // Overview metrics
     categoryCounts,
-    isOverviewLoading,
+    isOverviewLoading: false,
     totalPlacesInCity: Object.values(categoryCounts).reduce((a, b) => a + b, 0),
     allCategories: PLACE_CATEGORIES,
   };
