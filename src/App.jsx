@@ -10,6 +10,7 @@ import { useCitySearch } from './hooks/useCitySearch.js';
 import { usePlaces } from './hooks/usePlaces.js';
 import { useFavorites } from './hooks/useFavorites.js';
 import { parseUrlParams } from './utils/share.js';
+import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 
 function AppContent() {
   const urlState = parseUrlParams();
@@ -123,8 +124,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ToastProvider>
-      <AppContent />
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }

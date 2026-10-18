@@ -64,7 +64,7 @@ export function MapMarker({
 
   return (
     <Marker
-      position={[place.lat, place.lon]}
+      position={[Number(place.lat), Number(place.lon)]}
       icon={icon}
       eventHandlers={{
         click: () => onSelect(place.id),

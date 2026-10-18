@@ -19,6 +19,7 @@ import { ReportPlaceModal } from '../components/ReportPlaceModal.jsx';
 import { getCategoryById } from '../utils/placeCategories.js';
 import { copyToClipboard, getShareableUrl } from '../utils/share.js';
 import { useToast } from '../hooks/useToast.js';
+import { ErrorBoundary } from '../components/ErrorBoundary.jsx';
 
 export function ExploreCity({
   city,
@@ -113,7 +114,7 @@ export function ExploreCity({
                 {city.name}
               </h1>
               <span className="text-xs px-2.5 py-0.5 rounded-full font-mono bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                {city.lat.toFixed(3)}°N, {city.lon.toFixed(3)}°E
+                {Number(city.lat || 0).toFixed(3)}°N, {Number(city.lon || 0).toFixed(3)}°E
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-lg">
@@ -348,18 +349,26 @@ export function ExploreCity({
         </div>
 
         {/* Right Column: Sticky Leaflet Map */}
-        <div className={`lg:col-span-5 lg:sticky lg:top-24 h-[550px] lg:h-[calc(100vh-140px)] ${mobileTab === 'list' ? 'hidden lg:block' : 'block'}`}>
-          <CityMap
-            city={city}
-            places={filteredPlaces}
-            radiusKm={radiusKm}
-            activeCategory={activeCategory}
-            selectedPlaceId={selectedPlaceId}
-            onSelectPlace={handlePlaceSelect}
-            onViewDetails={handleViewDetails}
-            isFavoritePlace={favoritesHook.isFavorite}
-            onToggleFavorite={favoritesHook.toggleFavorite}
-          />
+        <div className={`lg:col-span-5 lg:sticky lg:top-24 h-[500px] lg:h-[calc(100vh-140px)] ${mobileTab === 'list' ? 'hidden lg:block' : 'block'}`}>
+          <ErrorBoundary fallback={
+            <div className="w-full h-full min-h-[400px] rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center p-6 text-center">
+              <Compass className="w-8 h-8 text-slate-400 mb-2" />
+              <p className="text-xs text-slate-500 font-medium">Interactive Map could not load on this device view.</p>
+            </div>
+          }>
+            <CityMap
+              city={city}
+              places={filteredPlaces}
+              radiusKm={radiusKm}
+              activeCategory={activeCategory}
+              selectedPlaceId={selectedPlaceId}
+              onSelectPlace={handlePlaceSelect}
+              onViewDetails={handleViewDetails}
+              isFavoritePlace={favoritesHook.isFavorite}
+              onToggleFavorite={favoritesHook.toggleFavorite}
+              isMobileHidden={mobileTab === 'list'}
+            />
+          </ErrorBoundary>
         </div>
       </div>
 

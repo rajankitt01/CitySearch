@@ -5,7 +5,8 @@ import {
   Layers, 
   Eye, 
   EyeOff, 
-  MapPin 
+  MapPin,
+  Compass
 } from 'lucide-react';
 import { MapMarker } from './MapMarker.jsx';
 import { PLACE_CATEGORIES } from '../utils/placeCategories.js';
@@ -15,15 +16,28 @@ function MapViewController({ center, zoom, selectedCoords }) {
   const map = useMap();
 
   useEffect(() => {
-    if (selectedCoords && selectedCoords.lat && selectedCoords.lon) {
-      map.flyTo([selectedCoords.lat, selectedCoords.lon], 16, {
-        duration: 1.2,
-      });
-    } else if (center && center.lat && center.lon) {
-      map.flyTo([center.lat, center.lon], zoom, {
-        duration: 1,
-      });
-    }
+    if (!map) return;
+
+    // Small delay ensures mobile browser has calculated container width & height
+    const timer = setTimeout(() => {
+      try {
+        map.invalidateSize();
+        const size = map.getSize();
+        if (!size || size.x === 0 || size.y === 0) return;
+
+        if (selectedCoords && Number.isFinite(selectedCoords.lat) && Number.isFinite(selectedCoords.lon)) {
+          map.flyTo([selectedCoords.lat, selectedCoords.lon], 16, {
+            duration: 1.0,
+          });
+        } else if (center && Number.isFinite(center.lat) && Number.isFinite(center.lon)) {
+          map.setView([center.lat, center.lon], zoom);
+        }
+      } catch (err) {
+        console.warn('MapViewController handled update warning:', err);
+      }
+    }, 60);
+
+    return () => clearTimeout(timer);
   }, [map, center, zoom, selectedCoords]);
 
   return null;
@@ -75,10 +89,15 @@ export function CityMap({
   onSelectPlace,
   onViewDetails,
   isFavoritePlace,
-  onToggleFavorite
+  onToggleFavorite,
+  isMobileHidden = false
 }) {
   const [showLegend, setShowLegend] = useState(false);
   const [showRadiusCircle, setShowRadiusCircle] = useState(true);
+
+  const centerLat = Number(city?.lat);
+  const centerLon = Number(city?.lon);
+  const isValidCenter = Number.isFinite(centerLat) && Number.isFinite(centerLon);
 
   // Zoom calculation based on radius
   const zoomLevel = useMemo(() => {
@@ -92,10 +111,13 @@ export function CityMap({
   const selectedCoords = useMemo(() => {
     if (!selectedPlaceId) return null;
     const found = places.find(p => p.id === selectedPlaceId);
-    return found ? { lat: found.lat, lon: found.lon } : null;
+    if (!found) return null;
+    const lat = Number(found.lat);
+    const lon = Number(found.lon);
+    return (Number.isFinite(lat) && Number.isFinite(lon)) ? { lat, lon } : null;
   }, [places, selectedPlaceId]);
 
-  if (!city || !city.lat || !city.lon) {
+  if (!isValidCenter) {
     return (
       <div className="w-full h-full min-h-[380px] rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center p-6 text-center">
         <MapPin className="w-10 h-10 text-slate-400 mb-2 animate-bounce" />
@@ -103,6 +125,18 @@ export function CityMap({
         <p className="text-xs text-slate-500 max-w-xs mt-1">
           Select or search for a city to initialize the live interactive map.
         </p>
+      </div>
+    );
+  }
+
+  // If container is hidden on mobile (user is on 'list' tab), do NOT mount Leaflet in display:none
+  if (isMobileHidden) {
+    return (
+      <div className="w-full h-full min-h-[420px] rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center p-6 text-center">
+        <div className="flex flex-col items-center gap-2">
+          <Compass className="w-8 h-8 text-brand-500 animate-spin-slow" />
+          <span className="text-xs text-slate-500">Tap "Interactive Map" tab above to view map</span>
+        </div>
       </div>
     );
   }
@@ -116,7 +150,7 @@ export function CityMap({
         {/* Toggle Radius Circle */}
         <button
           onClick={() => setShowRadiusCircle(!showRadiusCircle)}
-          className="p-2.5 rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-md text-slate-700 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 border border-slate-200 dark:border-slate-800 transition-all text-xs font-semibold flex items-center gap-1.5"
+          className="p-2.5 rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-md text-slate-700 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 border border-slate-200 dark:border-slate-800 transition-all text-xs font-semibold flex items-center gap-1.5 active:scale-95"
           title={showRadiusCircle ? 'Hide radius circle' : 'Show radius circle'}
         >
           {showRadiusCircle ? <EyeOff className="w-4 h-4 text-brand-600" /> : <Eye className="w-4 h-4" />}
@@ -126,7 +160,7 @@ export function CityMap({
         {/* Legend Toggle */}
         <button
           onClick={() => setShowLegend(!showLegend)}
-          className={`p-2.5 rounded-xl backdrop-blur-md shadow-md border transition-all text-xs font-semibold flex items-center gap-1.5 ${
+          className={`p-2.5 rounded-xl backdrop-blur-md shadow-md border transition-all text-xs font-semibold flex items-center gap-1.5 active:scale-95 ${
             showLegend
               ? 'bg-brand-600 text-white border-brand-600'
               : 'bg-white/95 dark:bg-slate-900/95 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:text-brand-600'
@@ -176,20 +210,20 @@ export function CityMap({
 
       {/* Interactive Leaflet Map */}
       <MapContainer
-        center={[city.lat, city.lon]}
+        center={[centerLat, centerLon]}
         zoom={zoomLevel}
         scrollWheelZoom={true}
         className="w-full h-full"
       >
         <MapViewController
-          center={{ lat: city.lat, lon: city.lon }}
+          center={{ lat: centerLat, lon: centerLon }}
           zoom={zoomLevel}
           selectedCoords={selectedCoords}
         />
 
         {/* Real OpenStreetMap Tile Layer */}
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors'
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxZoom={19}
         />
@@ -197,7 +231,7 @@ export function CityMap({
         {/* Search Radius Circle */}
         {showRadiusCircle && (
           <Circle
-            center={[city.lat, city.lon]}
+            center={[centerLat, centerLon]}
             radius={radiusKm * 1000}
             pathOptions={{
               color: '#3b82f6',
@@ -211,7 +245,7 @@ export function CityMap({
 
         {/* City Center Pin */}
         <Marker
-          position={[city.lat, city.lon]}
+          position={[centerLat, centerLon]}
           icon={centerIcon}
         >
           <Popup>
@@ -219,24 +253,30 @@ export function CityMap({
               <div className="text-brand-600 font-bold mb-0.5">City Reference Center</div>
               <div>{city.displayName || city.name}</div>
               <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                {city.lat.toFixed(4)}, {city.lon.toFixed(4)}
+                {centerLat.toFixed(4)}, {centerLon.toFixed(4)}
               </div>
             </div>
           </Popup>
         </Marker>
 
         {/* Place Markers */}
-        {places.map((place) => (
-          <MapMarker
-            key={place.id}
-            place={place}
-            isSelected={selectedPlaceId === place.id}
-            onSelect={onSelectPlace}
-            onViewDetails={onViewDetails}
-            isFavorite={isFavoritePlace(place.id)}
-            onToggleFavorite={onToggleFavorite}
-          />
-        ))}
+        {places.map((place) => {
+          const placeLat = Number(place.lat);
+          const placeLon = Number(place.lon);
+          if (!Number.isFinite(placeLat) || !Number.isFinite(placeLon)) return null;
+
+          return (
+            <MapMarker
+              key={place.id}
+              place={place}
+              isSelected={selectedPlaceId === place.id}
+              onSelect={onSelectPlace}
+              onViewDetails={onViewDetails}
+              isFavorite={isFavoritePlace(place.id)}
+              onToggleFavorite={onToggleFavorite}
+            />
+          );
+        })}
       </MapContainer>
     </div>
   );

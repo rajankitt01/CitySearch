@@ -128,7 +128,7 @@ export function Home({
                   <MapPin className="w-4 h-4" />
                 </div>
                 <span className="text-[11px] font-mono font-medium text-slate-400">
-                  {city.lat.toFixed(2)}°N
+                  {Number(city.lat || 0).toFixed(2)}°N
                 </span>
               </div>
               <h3 className="font-bold text-base text-slate-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
