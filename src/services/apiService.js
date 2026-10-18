@@ -27,8 +27,17 @@ export async function checkBackendHealth() {
     });
     clearTimeout(timeoutId);
 
-    backendAvailable = res.ok;
-    return backendAvailable;
+    if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        backendAvailable = !!(data && data.status === 'ok');
+        return backendAvailable;
+      }
+    }
+
+    backendAvailable = false;
+    return false;
   } catch {
     backendAvailable = false;
     return false;
