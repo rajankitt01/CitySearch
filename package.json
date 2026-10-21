@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "server": "node server/index.js",
-    "start": "node server/index.js",
     "build": "vite build",
-    "lint": "oxlint",
     "preview": "vite preview",
+    "start": "vite preview",
+    "server": "node server/index.js",
+    "lint": "oxlint",
     "db:view": "node scripts/view-database.js"
   },
   "engines": {
