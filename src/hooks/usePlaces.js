@@ -31,10 +31,13 @@ export function usePlaces({ city, initialCategory = 'healthcare', initialRadius 
     return {};
   });
 
-  // Adjust state during render when city changes (React recommended pattern)
-  const [prevCityName, setPrevCityName] = useState(city?.name);
-  if (city?.name !== prevCityName) {
-    setPrevCityName(city?.name);
+  // Adjust state during render when city changes by stable key comparison
+  const getCityKey = (c) => (c && c.name && c.lat != null) ? `${c.name}:${c.lat}:${c.lon}` : '';
+  const [prevCityKey, setPrevCityKey] = useState(() => getCityKey(city));
+  const currentKey = getCityKey(city);
+
+  if (currentKey !== prevCityKey) {
+    setPrevCityKey(currentKey);
     setSelectedPlaceId(null);
     setSearchQuery('');
     setSelectedSubCategory('all');

@@ -14,10 +14,13 @@ export function useCitySearch(initialCity = null) {
   const debounceTimerRef = useRef(null);
   const abortControllerRef = useRef(null);
 
-  // Synchronize state when initialCity changes (React recommended pattern)
-  const [prevInitialCity, setPrevInitialCity] = useState(initialCity);
-  if (initialCity && initialCity !== prevInitialCity) {
-    setPrevInitialCity(initialCity);
+  // Synchronize state when initialCity changes by stable key comparison
+  const getCityKey = (c) => (c && c.name && c.lat != null) ? `${c.name}:${c.lat}:${c.lon}` : '';
+  const [prevCityKey, setPrevCityKey] = useState(() => getCityKey(initialCity));
+  const currentKey = getCityKey(initialCity);
+
+  if (currentKey && currentKey !== prevCityKey) {
+    setPrevCityKey(currentKey);
     setSelectedCity(initialCity);
     setQuery(initialCity.name || '');
   }

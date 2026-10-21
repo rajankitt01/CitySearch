@@ -5,7 +5,9 @@
 import { POPULAR_CITIES } from '../services/geocodingService.js';
 
 export function getShareableUrl({ city, lat, lon, category, radius, placeId }) {
-  const url = new URL(window.location.origin + window.location.pathname);
+  const origin = typeof window !== 'undefined' && window.location ? window.location.origin : 'http://localhost';
+  const pathname = typeof window !== 'undefined' && window.location ? window.location.pathname : '/';
+  const url = new URL(origin + pathname);
   if (city) url.searchParams.set('city', city);
   if (lat != null) url.searchParams.set('lat', lat);
   if (lon != null) url.searchParams.set('lon', lon);
@@ -17,6 +19,18 @@ export function getShareableUrl({ city, lat, lon, category, radius, placeId }) {
 }
 
 export function parseUrlParams() {
+  if (typeof window === 'undefined' || !window.location) {
+    return {
+      city: null,
+      lat: null,
+      lon: null,
+      category: 'healthcare',
+      radius: 5,
+      placeId: null,
+      hasCity: false
+    };
+  }
+
   const params = new URLSearchParams(window.location.search);
   const city = params.get('city') || null;
   let lat = params.get('lat') ? parseFloat(params.get('lat')) : null;

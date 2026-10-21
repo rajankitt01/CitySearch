@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
+import { storage } from '../utils/storage.js';
 
 export class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -16,12 +17,18 @@ export class ErrorBoundary extends React.Component {
   }
 
   handleReset = () => {
+    storage.clearActiveSession();
     this.setState({ hasError: false, error: null });
     if (this.props.onReset) {
       this.props.onReset();
     } else {
       window.location.href = window.location.pathname;
     }
+  };
+
+  handleGoHome = () => {
+    storage.clearActiveSession();
+    window.location.href = window.location.pathname;
   };
 
   render() {
@@ -44,6 +51,11 @@ export class ErrorBoundary extends React.Component {
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                 We encountered an issue displaying this view on your device. You can refresh or return home.
               </p>
+              {this.state.error?.message && (
+                <p className="text-[11px] font-mono text-rose-500/80 bg-rose-50 dark:bg-rose-950/30 p-2 rounded-lg max-h-20 overflow-auto">
+                  {this.state.error.message}
+                </p>
+              )}
             </div>
 
             <div className="flex items-center justify-center gap-2 pt-2">
@@ -56,9 +68,7 @@ export class ErrorBoundary extends React.Component {
               </button>
 
               <button
-                onClick={() => {
-                  window.location.href = window.location.pathname;
-                }}
+                onClick={this.handleGoHome}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-100 transition-all active:scale-95"
               >
                 <Home className="w-4 h-4" />

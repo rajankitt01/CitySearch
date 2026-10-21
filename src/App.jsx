@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header.jsx';
 import { Footer } from './components/Footer.jsx';
 import { ToastProvider } from './components/Toast.jsx';
@@ -14,22 +14,36 @@ import { storage } from './utils/storage.js';
 import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 
 function AppContent() {
-  const urlState = parseUrlParams();
-  const savedSession = storage.getActiveSession();
-
-  // Initial city: prioritized from URL params, with fallback to saved active session on refresh
-  const initialCity = urlState.hasCity
-    ? {
+  // Memoize initial state on mount so object references never trigger cascading re-renders
+  const initialCity = useMemo(() => {
+    const urlState = parseUrlParams();
+    if (urlState.hasCity) {
+      return {
         name: urlState.city,
         lat: urlState.lat,
         lon: urlState.lon,
         displayName: `${urlState.city}`,
         locality: `${urlState.city}`,
-      }
-    : (savedSession?.city || null);
+      };
+    }
+    const saved = storage.getActiveSession();
+    if (saved && saved.city && saved.city.name && saved.city.lat != null && saved.city.lon != null) {
+      return saved.city;
+    }
+    return null;
+  }, []);
 
-  const initialCategory = urlState.category || savedSession?.category || 'healthcare';
-  const initialRadius = urlState.radius || savedSession?.radius || 5;
+  const initialCategory = useMemo(() => {
+    const urlState = parseUrlParams();
+    const saved = storage.getActiveSession();
+    return urlState.category || saved?.category || 'healthcare';
+  }, []);
+
+  const initialRadius = useMemo(() => {
+    const urlState = parseUrlParams();
+    const saved = storage.getActiveSession();
+    return urlState.radius || saved?.radius || 5;
+  }, []);
 
   const searchState = useCitySearch(initialCity);
   const favoritesState = useFavorites();
@@ -48,16 +62,23 @@ function AppContent() {
   const { setSelectedCity } = searchState;
   const { setSelectedPlaceId, setActiveCategory, setRadiusKm, places } = placesState;
 
+  const currentCityName = searchState.selectedCity?.name;
+  const currentCityLat = searchState.selectedCity?.lat;
+  const currentCityLon = searchState.selectedCity?.lon;
+  const currentCategory = placesState.activeCategory;
+  const currentRadius = placesState.radiusKm;
+  const currentPlaceId = placesState.selectedPlaceId;
+
   // Synchronize browser URL & storage session whenever city, category, radius, or place changes
   useEffect(() => {
-    if (searchState.selectedCity) {
+    if (currentCityName && currentCityLat != null && currentCityLon != null) {
       const url = getShareableUrl({
-        city: searchState.selectedCity.name,
-        lat: searchState.selectedCity.lat,
-        lon: searchState.selectedCity.lon,
-        category: placesState.activeCategory,
-        radius: placesState.radiusKm,
-        placeId: placesState.selectedPlaceId,
+        city: currentCityName,
+        lat: currentCityLat,
+        lon: currentCityLon,
+        category: currentCategory,
+        radius: currentRadius,
+        placeId: currentPlaceId,
       });
 
       // Update URL query parameters without full page reload
@@ -65,17 +86,25 @@ function AppContent() {
 
       // Persist active session to storage so refreshing keeps user on exact same view
       storage.setActiveSession({
-        city: searchState.selectedCity,
-        category: placesState.activeCategory,
-        radius: placesState.radiusKm,
-        placeId: placesState.selectedPlaceId,
+        city: {
+          name: currentCityName,
+          lat: currentCityLat,
+          lon: currentCityLon,
+          displayName: currentCityName,
+          locality: currentCityName,
+        },
+        category: currentCategory,
+        radius: currentRadius,
+        placeId: currentPlaceId,
       });
     }
   }, [
-    searchState.selectedCity,
-    placesState.activeCategory,
-    placesState.radiusKm,
-    placesState.selectedPlaceId
+    currentCityName,
+    currentCityLat,
+    currentCityLon,
+    currentCategory,
+    currentRadius,
+    currentPlaceId
   ]);
 
   // Support browser Back and Forward navigation buttons
@@ -102,12 +131,14 @@ function AppContent() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [setSelectedCity, setActiveCategory, setRadiusKm, setSelectedPlaceId]);
 
+  const initialPlaceId = useMemo(() => parseUrlParams().placeId, []);
+
   // If a placeId was provided in URL query, select it once places are loaded
   useEffect(() => {
-    if (urlState.placeId && places.length > 0) {
-      setSelectedPlaceId(urlState.placeId);
+    if (initialPlaceId && places.length > 0) {
+      setSelectedPlaceId(initialPlaceId);
     }
-  }, [urlState.placeId, places, setSelectedPlaceId]);
+  }, [initialPlaceId, places, setSelectedPlaceId]);
 
   const handleGoHome = () => {
     searchState.setSelectedCity(null);
