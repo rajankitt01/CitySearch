@@ -14,6 +14,14 @@ export function useCitySearch(initialCity = null) {
   const debounceTimerRef = useRef(null);
   const abortControllerRef = useRef(null);
 
+  // Synchronize state when initialCity changes (React recommended pattern)
+  const [prevInitialCity, setPrevInitialCity] = useState(initialCity);
+  if (initialCity && initialCity !== prevInitialCity) {
+    setPrevInitialCity(initialCity);
+    setSelectedCity(initialCity);
+    setQuery(initialCity.name || '');
+  }
+
   const handleSelectCity = useCallback((cityObj) => {
     if (!cityObj || !cityObj.lat || !cityObj.lon) return;
 

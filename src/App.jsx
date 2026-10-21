@@ -9,13 +9,15 @@ import { FeedbackModal } from './components/FeedbackModal.jsx';
 import { useCitySearch } from './hooks/useCitySearch.js';
 import { usePlaces } from './hooks/usePlaces.js';
 import { useFavorites } from './hooks/useFavorites.js';
-import { parseUrlParams } from './utils/share.js';
+import { parseUrlParams, getShareableUrl } from './utils/share.js';
+import { storage } from './utils/storage.js';
 import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 
 function AppContent() {
   const urlState = parseUrlParams();
+  const savedSession = storage.getActiveSession();
 
-  // Initial city from URL if present
+  // Initial city: prioritized from URL params, with fallback to saved active session on refresh
   const initialCity = urlState.hasCity
     ? {
         name: urlState.city,
@@ -24,15 +26,18 @@ function AppContent() {
         displayName: `${urlState.city}`,
         locality: `${urlState.city}`,
       }
-    : null;
+    : (savedSession?.city || null);
+
+  const initialCategory = urlState.category || savedSession?.category || 'healthcare';
+  const initialRadius = urlState.radius || savedSession?.radius || 5;
 
   const searchState = useCitySearch(initialCity);
   const favoritesState = useFavorites();
 
   const placesState = usePlaces({
     city: searchState.selectedCity,
-    initialCategory: urlState.category || 'healthcare',
-    initialRadius: urlState.radius || 5,
+    initialCategory,
+    initialRadius,
   });
 
   // Modal dialog states
@@ -40,7 +45,62 @@ function AppContent() {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [reportingPlace, setReportingPlace] = useState(null);
 
-  const { setSelectedPlaceId, places } = placesState;
+  const { setSelectedCity } = searchState;
+  const { setSelectedPlaceId, setActiveCategory, setRadiusKm, places } = placesState;
+
+  // Synchronize browser URL & storage session whenever city, category, radius, or place changes
+  useEffect(() => {
+    if (searchState.selectedCity) {
+      const url = getShareableUrl({
+        city: searchState.selectedCity.name,
+        lat: searchState.selectedCity.lat,
+        lon: searchState.selectedCity.lon,
+        category: placesState.activeCategory,
+        radius: placesState.radiusKm,
+        placeId: placesState.selectedPlaceId,
+      });
+
+      // Update URL query parameters without full page reload
+      window.history.replaceState(null, '', url);
+
+      // Persist active session to storage so refreshing keeps user on exact same view
+      storage.setActiveSession({
+        city: searchState.selectedCity,
+        category: placesState.activeCategory,
+        radius: placesState.radiusKm,
+        placeId: placesState.selectedPlaceId,
+      });
+    }
+  }, [
+    searchState.selectedCity,
+    placesState.activeCategory,
+    placesState.radiusKm,
+    placesState.selectedPlaceId
+  ]);
+
+  // Support browser Back and Forward navigation buttons
+  useEffect(() => {
+    const handlePopState = () => {
+      const currentUrl = parseUrlParams();
+      if (currentUrl.hasCity) {
+        setSelectedCity({
+          name: currentUrl.city,
+          lat: currentUrl.lat,
+          lon: currentUrl.lon,
+          displayName: currentUrl.city,
+          locality: currentUrl.city,
+        });
+        if (currentUrl.category) setActiveCategory(currentUrl.category);
+        if (currentUrl.radius) setRadiusKm(currentUrl.radius);
+        if (currentUrl.placeId) setSelectedPlaceId(currentUrl.placeId);
+      } else {
+        setSelectedCity(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [setSelectedCity, setActiveCategory, setRadiusKm, setSelectedPlaceId]);
 
   // If a placeId was provided in URL query, select it once places are loaded
   useEffect(() => {
@@ -52,6 +112,7 @@ function AppContent() {
   const handleGoHome = () => {
     searchState.setSelectedCity(null);
     searchState.setQuery('');
+    storage.clearActiveSession();
     window.history.pushState({}, '', window.location.pathname);
   };
 

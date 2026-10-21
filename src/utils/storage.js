@@ -5,6 +5,7 @@
 const RECENT_SEARCHES_KEY = 'citysearch_recent_cities';
 const FAVORITES_KEY = 'citysearch_favorites';
 const THEME_KEY = 'citysearch_theme';
+const ACTIVE_SESSION_KEY = 'citysearch_active_session';
 const CACHE_PREFIX = 'citysearch_cache_';
 
 // In-memory fallback if localStorage is unavailable
@@ -172,5 +173,31 @@ export const storage = {
     } catch (e) {
       console.warn('Could not save theme', e);
     }
+  },
+
+  // Active Session Persistence (ensures page stays on same state upon refresh)
+  getActiveSession: () => {
+    try {
+      const data = getStorageItem(ACTIVE_SESSION_KEY);
+      return data ? JSON.parse(data) : null;
+    } catch {
+      return null;
+    }
+  },
+
+  setActiveSession: (session) => {
+    try {
+      if (!session || !session.city) {
+        removeStorageItem(ACTIVE_SESSION_KEY);
+        return;
+      }
+      setStorageItem(ACTIVE_SESSION_KEY, JSON.stringify(session));
+    } catch (e) {
+      console.warn('Could not save active session', e);
+    }
+  },
+
+  clearActiveSession: () => {
+    removeStorageItem(ACTIVE_SESSION_KEY);
   }
 };

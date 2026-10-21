@@ -26,7 +26,7 @@ export function usePlaces({ city, initialCategory = 'healthcare', initialRadius 
   // Category counts overview
   const [categoryCounts, setCategoryCounts] = useState(() => {
     if (city?.lat && city?.lon) {
-      return getCityCategoryOverview({ lat: city.lat, lon: city.lon, radiusKm: initialRadius });
+      return getCityCategoryOverview({ lat: city.lat, lon: city.lon, radiusKm: initialRadius, cityName: city.name });
     }
     return {};
   });
@@ -41,9 +41,11 @@ export function usePlaces({ city, initialCategory = 'healthcare', initialRadius 
     setOnlyOpenNow(false);
     setVisibleCount(12);
     if (city?.lat && city?.lon) {
-      setCategoryCounts(getCityCategoryOverview({ lat: city.lat, lon: city.lon, radiusKm }));
+      setCategoryCounts(getCityCategoryOverview({ lat: city.lat, lon: city.lon, radiusKm, cityName: city.name }));
     } else {
       setCategoryCounts({});
+      setPlaces([]);
+      setIsLoading(false);
     }
   }
 
@@ -52,10 +54,6 @@ export function usePlaces({ city, initialCategory = 'healthcare', initialRadius 
   // Main reactive fetch effect
   useEffect(() => {
     if (!city || !city.lat || !city.lon) {
-      Promise.resolve().then(() => {
-        setPlaces([]);
-        setIsLoading(false);
-      });
       return;
     }
 
@@ -65,7 +63,7 @@ export function usePlaces({ city, initialCategory = 'healthcare', initialRadius 
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    Promise.resolve().then(() => {
+    queueMicrotask(() => {
       if (!controller.signal.aborted) {
         setIsLoading(true);
         setError(null);
@@ -87,7 +85,7 @@ export function usePlaces({ city, initialCategory = 'healthcare', initialRadius 
           setCategoryCounts(prev => {
             const updated = { ...prev, [activeCategory]: results.length };
             const overviewCacheKey = `city_overview_${city.lat.toFixed(3)}_${city.lon.toFixed(3)}_${radiusKm}`;
-            storage.setCache(overviewCacheKey, updated, 20 * 60 * 1000);
+            storage.setCache(overviewCacheKey, updated, 30 * 60 * 1000);
             return updated;
           });
           setIsLoading(false);

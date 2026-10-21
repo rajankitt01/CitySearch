@@ -297,13 +297,8 @@ export async function searchLocation(query, signal = null) {
   // 1. Instant local matching (0ms response)
   const localMatches = matchLocalCities(cleanQuery);
 
-  // If we have an exact match or strong prefix matches, return immediately!
-  const hasStrongMatch = localMatches.length > 0 && (
-    localMatches[0].name.toLowerCase() === cleanQuery.toLowerCase() ||
-    (localMatches.length >= 3 && localMatches[0].name.toLowerCase().startsWith(cleanQuery.toLowerCase()))
-  );
-
-  if (hasStrongMatch) {
+  // If we have local matches (exact or prefix match), return immediately for zero-latency response!
+  if (localMatches.length > 0) {
     const topResults = localMatches.slice(0, 8);
     storage.setCache(cacheKey, topResults, 2 * 60 * 60 * 1000); // 2 hours
     return topResults;
